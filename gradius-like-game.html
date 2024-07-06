@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>宇宙飛行機シューティングゲーム</title>
+    <style>
+        body { background-color: black; }
+        canvas {
+            border: 1px solid white;
+            display: block;
+            margin: 0 auto;
+        }
+        #controls {
+            text-align: center;
+            margin-top: 10px;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="controls">
+        <button id="startButton">ゲーム開始</button>
+        <button id="muteButton">BGMミュート</button>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const muteButton = document.getElementById('muteButton');
+
+        let audioContext;
+        let isMuted = false;
+        let bgmSource;
+        let bgmBuffer;
+
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        const stars = [];
+        const numStars = 200;
+        for (let i = 0; i < numStars; i++) {
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 2,
+                speed: Math.random() * 3 + 1
+            });
+        }
+
+        function updateStars() {
+            for (let star of stars) {
+                star.x -= star.speed;
+                if (star.x < 0) {
+                    star.x = canvas.width;
+                    star.y = Math.random() * canvas.height;
+                }
+            }
+        }
+
+        function drawStars() {
+            ctx.fillStyle = 'white';
+            for (let star of stars) {
+                ctx.fillRect(star.x, star.y, star.size, star.size);
+            }
+        }
+
+        async function loadBGM() {
+            if (!audioContext) initAudioContext();
+            const response = await fetch('https://drive.google.com/uc?export=download&id=1rgjLlA-Dd79qncAh4nDCo5Mt2dKgvAkU');
+            const arrayBuffer = await response.arrayBuffer();
+            bgmBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        }
+
+        function playBGM() {
+            if (isMuted || !bgmBuffer) return;
+            bgmSource = audioContext.createBufferSource();
+            bgmSource.buffer = bgmBuffer;
+            bgmSource.loop = true;
+            bgmSource.connect(audioContext.destination);
+            bgmSource.start();
+        }
+
+        function stopBGM() {
+            if (bgmSource) {
+                bgmSource.stop();
+                bgmSource = null;
+            }
+        }
+
+        function playExplosionSound() {
+            // Explosion sound code remains the same
+        }
+
+        function playEnemyDestroySound() {
+            // Enemy destroy sound code remains the same
+        }
+
+        function playSpeech(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            speechSynthesis.speak(utterance);
+        }
+
+        muteButton.addEventListener('click', () => {
+            isMuted = !isMuted;
+            if (isMuted) {
+                stopBGM();
+                muteButton.textContent = 'BGMオン';
+            } else {
+                playBGM();
+                muteButton.textContent = 'BGMミュート';
+            }
+        });
+
+        class GameObject {
+            constructor(x, y, width, height, color) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.color = color;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+        }
+
+        class PlayerShip extends GameObject {
+            constructor(x, y) {
+                super(x, y, 50, 30, 'silver');
+                this.dy = 0;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y + this.height / 2);
+                ctx.lineTo(this.x + this.width, this.y);
+                ctx.lineTo(this.x + this.width, this.y + this.height);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.fillStyle = 'darkgray';
+                ctx.beginPath();
+                ctx.moveTo(this.x + this.width / 2, this.y);
+                ctx.lineTo(this.x + this.width / 2, this.y - 10);
+                ctx.lineTo(this.x + this.width * 0.8, this.y);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.fillStyle = 'skyblue';
+                ctx.fillRect(this.x + this.width * 0.1, this.y + this.height * 0.3, this.width * 0.2, this.height * 0.4);
+            }
+
+            update() {
+                this.y += this.dy;
+                if (this.y < 0) this.y = 0;
+                if (this.y > canvas.height - this.height) this.y = canvas.height - this.height;
+            }
+        }
+
+        class Enemy extends GameObject {
+            constructor(x, y) {
+                super(x, y, 40, 40, 'red');
+                this.dx = -2;
+                this.angle = 0;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+                ctx.rotate(this.angle);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.moveTo(-this.width / 2, -this.height / 2);
+                ctx.lineTo(this.width / 2, 0);
+                ctx.lineTo(-this.width / 2, this.height / 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                this.x += this.dx;
+                this.angle += 0.1;
+            }
+        }
+
+        class Bullet extends GameObject {
+            constructor(x, y) {
+                super(x, y, 10, 5, 'yellow');
+                this.dx = 5;
+            }
+
+            update() {
+                this.x += this.dx;
+            }
+        }
+
+        class Explosion {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 1;
+                this.maxRadius = 30;
+                this.speed = 2;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 100, 0, ${1 - this.radius / this.maxRadius})`;
+                ctx.fill();
+            }
+
+            update() {
+                this.radius += this.speed;
+                return this.radius <= this.maxRadius;
+            }
+        }
+
+        const player = new PlayerShip(50, canvas.height / 2 - 15);
+        let enemies = [];
+        let bullets = [];
+        let explosions = [];
+        let gameOver = false;
+        let gameStarted = false;
+
+        function update() {
+            if (gameOver || !gameStarted) return;
+
+            updateStars();
+            player.update();
+
+            if (Math.random() < 0.02) {
+                enemies.push(new Enemy(canvas.width, Math.random() * (canvas.height - 30)));
+            }
+
+            enemies = enemies.filter(enemy => {
+                enemy.update();
+                return enemy.x > -enemy.width;
+            });
+
+            bullets = bullets.filter(bullet => {
+                bullet.update();
+                return bullet.x < canvas.width;
+            });
+
+            explosions = explosions.filter(explosion => explosion.update());
+
+            checkCollisions();
+        }
+
+        function checkCollisions() {
+            for (let enemy of enemies) {
+                if (collision(player, enemy)) {
+                    gameOver = true;
+                    explosions.push(new Explosion(player.x + player.width / 2, player.y + player.height / 2));
+                    playExplosionSound();
+                    stopBGM();
+                    return;
+                }
+
+                for (let bullet of bullets) {
+                    if (collision(bullet, enemy)) {
+                        explosions.push(new Explosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2));
+                        playEnemyDestroySound();
+                        enemies = enemies.filter(e => e !== enemy);
+                        bullets = bullets.filter(b => b !== bullet);
+                        break;
+                    }
+                }
+            }
+        }
+
+        function collision(obj1, obj2) {
+            return obj1.x < obj2.x + obj2.width &&
+                   obj1.x + obj1.width > obj2.x &&
+                   obj1.y < obj2.y + obj2.height &&
+                   obj1.y + obj2.height > obj2.y;
+        }
+
+        function draw() {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawStars();
+
+            if (!gameStarted) {
+                ctx.fillStyle = 'white';
+                ctx.font = '30px Arial';
+                ctx.fillText('ゲーム開始ボタンを押してください', canvas.width / 2 - 200, canvas.height / 2);
+                return;
+            }
+
+            player.draw();
+            enemies.forEach(enemy => enemy.draw());
+            bullets.forEach(bullet => bullet.draw());
+            explosions.forEach(explosion => explosion.draw());
+
+            if (gameOver) {
+                ctx.fillStyle = 'white';
+                ctx.font = '30px Arial';
+                ctx.fillText('ゲームオーバー', canvas.width / 2 - 100, canvas.height / 2);
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (!gameStarted || gameOver) return;
+            if (e.key === 'ArrowUp') player.dy = -5;
+            if (e.key === 'ArrowDown') player.dy = 5;
+            if (e.key === ' ') {
+                bullets.push(new Bullet(player.x + player.width, player.y + player.height / 2 - 2.5));
+                playSoundEffect(440, 0.1); // 発射音
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') player.dy = 0;
+        });
+
+        async function loadBGM() {
+            if (!audioContext) initAudioContext();
+            const response = await fetch('https://drive.google.com/uc?export=download&id=1rgjLlA-Dd79qncAh4nDCo5Mt2dKgvAkU');
+            const arrayBuffer = await response.arrayBuffer();
+            bgmBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        }
+
+        startButton.addEventListener('click', async () => {
+            try {
+                initAudioContext();
+                if (!bgmBuffer) await loadBGM();
+                if (!gameStarted) {
+                    gameStarted = true;
+                    playBGM();
+                    playSpeech("Destroy them all!"); // ゲーム開始時のボイス
+                    startButton.textContent = 'リスタート';
+                } else {
+                    gameOver = false;
+                    enemies = [];
+                    bullets = [];
+                    explosions = [];
+                    player.x = 50;
+                    player.y = canvas.height / 2 - 15;
+                    stopBGM();
+                    playBGM();
+                    playSpeech("Destroy them all!"); // リスタート時のボイス
+                }
+            } catch (error) {
+                console.error("Error in startButton click handler:", error);
+            }
+        });
+
+        gameLoop();
+    </script>
+</body>
+</html>
